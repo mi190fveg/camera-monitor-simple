@@ -1,13 +1,18 @@
 import socket
 import ipaddress
 import threading
+import subprocess
+import sys
+import os
 from collections import defaultdict
+from datetime import datetime
 
 # استخدم نفس نطاق شبكتك
 NETWORK = "192.168.100.0/24"
-TIMEOUT = 0.3
+TIMEOUT = 0.2
 RESULTS = defaultdict(list)
 LOCK = threading.Lock()
+OUTPUT_FILE = "camera_scan_results.txt"
 
 def check_port(ip, port):
     """فحص إذا المنفذ مفتوح"""
@@ -56,39 +61,101 @@ def scan_network():
     for t in threads:
         t.join()
     
-    print("\n" + "="*60)
-    print("📊 Scan Results:")
-    print("="*60)
-    
-    if not RESULTS:
-        print("❌ No devices found!")
-        return None
-    
-    print(f"Found {len(RESULTS)} device(s):\n")
-    
-    for idx, (ip, ports) in enumerate(sorted(RESULTS.items()), 1):
-        print(f"{idx}. IP: {ip}")
-        print(f"   Open Ports: {ports}")
-        
-        # تخمين نوع الجهاز
-        if 554 in ports or 8554 in ports:
-            print(f"   Likely: 🎥 Camera (RTSP port)")
-        if 80 in ports or 8080 in ports:
-            print(f"   Likely: 🌐 Web Server")
-        print()
-    
     return RESULTS
 
-if __name__ == "__main__":
+def save_results_to_file(results):
+    """حفظ النتائج إلى ملف"""
+    with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
+        f.write("="*70 + "\n")
+        f.write(f"📊 Network Scan Results\n")
+        f.write(f"Network: {NETWORK}\n")
+        f.write(f"Scan Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write("="*70 + "\n\n")
+        
+        if not results:
+            f.write("❌ No devices found!\n")
+            return
+        
+        f.write(f"Found {len(results)} device(s):\n\n")
+        
+        for idx, (ip, ports) in enumerate(sorted(results.items()), 1):
+            f.write(f"{idx}. IP Address: {ip}\n")
+            f.write(f"   Open Ports: {', '.join(map(str, ports))}\n")
+            
+            # تخمين نوع الجهاز
+            device_type = []
+            if 554 in ports or 8554 in ports:
+                device_type.append("🎥 Camera (RTSP)")
+            if 80 in ports or 8080 in ports:
+                device_type.append("🌐 Web Server")
+            if 443 in ports or 8443 in ports:
+                device_type.append("🔒 HTTPS Server")
+            
+            if device_type:
+                f.write(f"   Type: {', '.join(device_type)}\n")
+            f.write("\n")
+        
+        f.write("\n" + "="*70 + "\n")
+        f.write("Next Steps:\n")
+        f.write("="*70 + "\n")
+        f.write("1. For web cameras:\n")
+        f.write("   - Try: http://IP or http://IP:8080 in browser\n\n")
+        f.write("2. For RTSP cameras:\n")
+        f.write("   - Run: python test_rtsp.py <IP>\n")
+        f.write("   - Example: python test_rtsp.py 192.168.100.50\n\n")
+        f.write("3. Common RTSP URLs to try:\n")
+        f.write("   - rtsp://admin:admin@IP:554/stream1\n")
+        f.write("   - rtsp://admin:123456@IP:554/stream1\n")
+        f.write("   - rtsp://admin:admin@IP:554/ch0\n")
+        f.write("="*70 + "\n")
+
+def open_file_in_explorer():
+    """فتح الملف في explorer"""
+    try:
+        if sys.platform == 'win32':
+            os.startfile(OUTPUT_FILE)
+        elif sys.platform == 'darwin':  # macOS
+            subprocess.run(['open', OUTPUT_FILE])
+        else:  # Linux
+            subprocess.run(['xdg-open', OUTPUT_FILE])
+        return True
+    except Exception as e:
+        print(f"❌ Error opening file: {e}")
+        return False
+
+def main():
+    print("\n" + "="*70)
+    print("🎥 CAMERA NETWORK SCANNER")
+    print("="*70 + "\n")
+    
+    # اختبر الاتصال بالشبكة أولاً
+    try:
+        socket.gethostbyname(socket.gethostname())
+    except Exception as e:
+        print(f"❌ Network error: {e}")
+        return
+    
+    # فحص الشبكة
     results = scan_network()
     
-    if results:
-        print("\n" + "="*60)
-        print("Next steps:")
-        print("="*60)
-        print("\nFor each device, try:")
-        print("1. http://IP (or http://IP:8080)")
-        print("2. rtsp://admin:admin@IP:554/stream1")
-        print("3. rtsp://admin:123456@IP:554/stream1")
-        print("\nRun: python test_rtsp.py <IP>")
-        print("="*60)
+    # حفظ النتائج
+    print("\n" + "="*70)
+    print("💾 Saving results to file...")
+    print("="*70)
+    save_results_to_file(results)
+    print(f"✅ Results saved to: {OUTPUT_FILE}\n")
+    
+    # فتح الملف
+    print("📂 Opening file...")
+    if open_file_in_explorer():
+        print(f"✅ File opened: {OUTPUT_FILE}")
+    else:
+        print(f"⚠️ You can open it manually: {OUTPUT_FILE}")
+    
+    print("\n" + "="*70)
+    print("✨ Scan completed!")
+    print("="*70)
+
+if __name__ == "__main__":
+    main()
+    input("\nPress Enter to exit...")
